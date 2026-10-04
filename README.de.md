@@ -6,7 +6,7 @@ Verlauf, neue Medien, Nutzer, Bibliotheken und Statistiken – auf der Pebble Ti
 
 ![Screenshots](docs/screenshots.png)
 
-*Screenshots aus dem Emulator im Demo-Modus mit erfundenen Daten.*
+*Screenshots von einer Pebble Time 2 im Demo-Modus mit erfundenen Daten.*
 
 [English version](README.md) · [Änderungen](CHANGELOG.md) · [Mitmachen](CONTRIBUTING.md)
 

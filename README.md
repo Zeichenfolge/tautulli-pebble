@@ -6,7 +6,7 @@ history, new media, users, libraries and statistics – on a Pebble Time 2.
 
 ![Screenshots](docs/screenshots.png)
 
-*Emulator screenshots in demo mode with made-up data.*
+*Screenshots from a Pebble Time 2 in demo mode with made-up data.*
 
 [Deutsche Version](README.de.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
