@@ -1,0 +1,74 @@
+{
+  "name": "tautulli-pebble",
+  "author": "Michael Runge",
+  "version": "1.2.0",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "dependencies": {
+    "pebble-clay": "^1.0.4"
+  },
+  "pebble": {
+    "displayName": "Tautulli",
+    "uuid": "e7a8b0ad-3b59-46ba-8aee-afc161acba86",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "capabilities": [
+      "configurable"
+    ],
+    "messageKeys": [
+      "Type",
+      "ListId",
+      "Total",
+      "Index",
+      "Section",
+      "Sections",
+      "Kind",
+      "Title",
+      "Subtitle",
+      "Detail",
+      "Key",
+      "Progress",
+      "Header",
+      "HeaderState",
+      "Text",
+      "Ok",
+      "Command",
+      "Lang",
+      "Data",
+      "Labels",
+      "CfgUrl",
+      "CfgApiKey",
+      "CfgCount",
+      "CfgLang"
+    ],
+    "resources": {
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "MENU_ICON",
+          "file": "images/menu_icon.png",
+          "menuIcon": true
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_STOP",
+          "file": "images/icon_stop.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_CHECK",
+          "file": "images/icon_check.png"
+        }
+      ]
+    }
+  },
+  "license": "MIT"
+}
