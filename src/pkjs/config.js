@@ -81,7 +81,8 @@ module.exports = function (lang) {
           label: t.url,
           description: t.urlHint,
           defaultValue: '',
-          attributes: { placeholder: 'http://192.168.1.10:8181', type: 'url', autocapitalize: 'off', autocorrect: 'off' }
+          // Bewusst kein type "url": sonst lehnt die Seite "demo" und Adressen ohne http:// ab.
+          attributes: { placeholder: 'http://192.168.1.10:8181', type: 'text', inputmode: 'url', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' }
         },
         {
           type: 'input',

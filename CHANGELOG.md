@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 – 2026-10-04
+- Settings: the address field now accepts `demo` and addresses without `http://`
+  (it was a URL field, so the settings page refused to save)
+
 ## 1.2.0 – 2026-10-04
 - Open source release (MIT)
 - Settings: GitHub link next to "Buy me a coffee"
