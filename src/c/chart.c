@@ -24,6 +24,7 @@ typedef struct {
   Window *window;
   Layer *layer;
   ChartRequestFn request;
+  char key[48];
   int days_requested;
   int days;
   uint16_t values[MAX_DAYS][SERIES];
@@ -73,7 +74,7 @@ static void prv_request(void) {
   s_chart->loading = true;
   if (!s_chart->has_data) prv_copy(s_chart->status, sizeof(s_chart->status), tr(STR_LOADING));
   layer_mark_dirty(s_chart->layer);
-  s_chart->request(s_chart->days_requested);
+  s_chart->request(s_chart->days_requested, s_chart->key);
 }
 
 static void prv_draw_text(GContext *ctx, const char *text, const char *font, GRect r, GTextAlignment align) {
@@ -211,11 +212,12 @@ static void prv_unload(Window *w) {
   window_destroy(w);
 }
 
-void chart_open(ChartRequestFn request) {
+void chart_open(ChartRequestFn request, const char *key) {
   if (s_chart) return;
   s_chart = calloc(1, sizeof(Chart));
   if (!s_chart) return;
   s_chart->request = request;
+  prv_copy(s_chart->key, sizeof(s_chart->key), key ? key : "");
   s_chart->days_requested = 7;
   s_chart->window = window_create();
   window_set_click_config_provider(s_chart->window, prv_click_config);

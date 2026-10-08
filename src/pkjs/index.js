@@ -22,8 +22,8 @@ var demo = require('./demo');
 
 var LIST_HOME = 1, LIST_HISTORY = 2, LIST_RECENT = 3, LIST_STATS = 4, LIST_USERS = 5,
     LIST_LIBRARIES = 6, LIST_USER_HISTORY = 7, LIST_CHART = 8;
-var T_LIST_BEGIN = 1, T_ITEM = 2, T_LIST_END = 3, T_ERROR = 4, T_RESULT = 5, T_CHART = 6;
-var KIND_NONE = 0, KIND_DETAIL = 1, KIND_STREAM = 2, KIND_USER = 3;
+var T_LIST_BEGIN = 1, T_ITEM = 2, T_LIST_END = 3, T_ERROR = 4, T_RESULT = 5, T_CHART = 6, T_NOTIFY = 7;
+var KIND_NONE = 0, KIND_DETAIL = 1, KIND_STREAM = 2, KIND_USER = 3, KIND_CHART = 4;
 var CMD_LOAD = 1, CMD_TERMINATE = 2;
 var MAX_ITEMS = 30;
 
@@ -31,8 +31,15 @@ var DEFAULTS = {
   CfgUrl: '',
   CfgApiKey: '',
   CfgCount: 15,
-  CfgLang: 'auto'
+  CfgLang: 'auto',
+  CfgProgress: 'percent',   // percent | remaining | endtime
+  CfgVibrate: true          // vibrieren, wenn eine Wiedergabe zu Ende geschaut ist
 };
+
+// Ab diesem Fortschritt gilt eine Wiedergabe als "zu Ende geschaut" (wie bei Plex)
+var WATCHED_PERCENT = 90;
+// So oft prüft das Handy, ob eine Wiedergabe zu Ende ist (nur solange die App offen ist)
+var WATCH_INTERVAL_MS = 30000;
 
 /* ------------------------------------------------------------------ */
 /* Texte                                                               */
@@ -57,6 +64,8 @@ var TEXT = {
     tautulliNoPlex: 'Tautulli erreicht Plex nicht', tautulliDown: 'Tautulli nicht erreichbar',
     streamOne: 'Stream', streamMany: 'Streams', nowPlaying: 'Jetzt läuft', nothingPlaying: 'Gerade läuft nichts',
     stopQuestion: 'Stream von {user} beenden?', stopMessage: 'Der Stream wurde beendet.',
+    left: 'noch {time}', endsAt: 'bis {time}', remaining: 'Rest', finished: '{user} hat {title} zu Ende geschaut',
+    userWatchTime: 'Wiedergabezeit', userChart: 'Diagramm', userChartSub: 'Wiedergaben pro Tag',
     // Listen
     history: 'Verlauf', noHistory: 'Noch kein Verlauf', recent: 'Neu hinzugefügt', nothingNew: 'Nichts Neues',
     users: 'Nutzer', noUsers: 'Keine Nutzer', lastSeen: 'zuletzt', never: 'noch nie geschaut',
@@ -68,7 +77,8 @@ var TEXT = {
     secWatchTime: 'Wiedergabezeit', secTopUsers: 'Top-Nutzer · 30 Tage', secTopMovies: 'Filme · 30 Tage',
     secTopShows: 'Serien · 30 Tage', noData: 'Keine Daten',
     // Diagramm
-    chartHeader: '{days} Tage · {plays} Wiedergaben', chartLegend: 'Serien|Filme|Musik',
+    chartHeader: '{days} Tage · {plays} Wiedergaben', chartHeaderUser: '{user} · {days} Tage · {plays}x',
+    chartLegend: 'Serien|Filme|Musik',
     // Fehler
     setupNeeded: 'Einrichtung nötig',
     noApiKey: 'API-Key fehlt: bitte in der Pebble-App eintragen',
@@ -96,6 +106,8 @@ var TEXT = {
     tautulliNoPlex: 'Tautulli can\'t reach Plex', tautulliDown: 'Tautulli unreachable',
     streamOne: 'stream', streamMany: 'streams', nowPlaying: 'Now playing', nothingPlaying: 'Nothing playing',
     stopQuestion: 'Stop {user}\'s stream?', stopMessage: 'The stream has been stopped.',
+    left: '{time} left', endsAt: 'ends {time}', remaining: 'Remaining', finished: '{user} finished {title}',
+    userWatchTime: 'Watch time', userChart: 'Chart', userChartSub: 'Plays per day',
     history: 'History', noHistory: 'No history yet', recent: 'Recently added', nothingNew: 'Nothing new',
     users: 'Users', noUsers: 'No users', lastSeen: 'last', never: 'never watched',
     libraries: 'Libraries', noLibraries: 'No libraries', plays: 'Plays', watchTime: 'Watch time',
@@ -104,7 +116,8 @@ var TEXT = {
     stats: 'Statistics', statToday: 'Today', stat7: 'Last 7 days', stat30: 'Last 30 days',
     secWatchTime: 'Watch time', secTopUsers: 'Top users · 30 days', secTopMovies: 'Movies · 30 days',
     secTopShows: 'Shows · 30 days', noData: 'No data',
-    chartHeader: '{days} days · {plays} plays', chartLegend: 'Shows|Movies|Music',
+    chartHeader: '{days} days · {plays} plays', chartHeaderUser: '{user} · {days} days · {plays}x',
+    chartLegend: 'Shows|Movies|Music',
     setupNeeded: 'Setup needed',
     noApiKey: 'API key missing: add it in the Pebble app',
     noUrl: 'Tautulli address missing: add it in the Pebble app',
@@ -130,6 +143,8 @@ function settings() {
   out.CfgCount = Math.max(5, Math.min(25, parseInt(out.CfgCount, 10) || 15));
   out.CfgApiKey = String(out.CfgApiKey).trim();
   out.CfgUrl = String(out.CfgUrl).trim();
+  out.CfgVibrate = !(out.CfgVibrate === false || out.CfgVibrate === 'false' || out.CfgVibrate === 0);
+  if (['percent', 'remaining', 'endtime'].indexOf(out.CfgProgress) < 0) out.CfgProgress = 'percent';
   return out;
 }
 
@@ -418,6 +433,32 @@ function parallel(calls, cb) {
 /* Startbildschirm: Server-Status und aktuelle Streams                 */
 /* ------------------------------------------------------------------ */
 
+// Verbleibende Sekunden eines Streams oder null, wenn die Länge unbekannt ist
+function remainingSec(x) {
+  var dur = parseInt(x.duration, 10), off = parseInt(x.view_offset, 10);
+  if (!(dur > 0) || isNaN(off)) return null;
+  return Math.max(0, Math.round((dur - off) / 1000));
+}
+
+// Uhrzeit in "sec" Sekunden, z. B. "21:45"
+function clockIn(sec) {
+  var d = new Date(Date.now() + sec * 1000);
+  return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+
+// Fortschritt für die Startliste, je nach Einstellung
+function progressText(progress, rest) {
+  var t = L();
+  var mode = settings().CfgProgress;
+  if (rest === null || mode === 'percent') return progress + ' %';
+  if (mode === 'endtime') return fill(t.endsAt, { time: clockIn(rest) });
+  // kurz halten, damit die Zeile auf die Uhr passt: "noch 19 Min" bzw. "noch 1:05 Std"
+  var short = rest >= 3600
+    ? Math.floor(rest / 3600) + ':' + pad2(Math.floor((rest % 3600) / 60)) + ' ' + t.hours
+    : Math.max(1, Math.round(rest / 60)) + ' ' + t.minutes;
+  return fill(t.left, { time: short });
+}
+
 function streamItem(x) {
   var t = L();
   var playing = x.state !== 'paused';
@@ -427,7 +468,8 @@ function streamItem(x) {
   var what = x.media_type === 'episode' ? epCode(x.parent_media_index, x.media_index)
            : x.media_type === 'track' ? (x.grandparent_title || '')
            : (x.year || '');
-  var sub = [who, what, playing ? progress + ' %' : t.pause].filter(Boolean).join(' · ');
+  var rest = remainingSec(x);
+  var sub = [who, what, playing ? progressText(progress, rest) : t.pause].filter(Boolean).join(' · ');
   var quality = [x.stream_video_full_resolution || x.video_full_resolution, decision(x.transcode_decision)]
     .filter(Boolean).join(' · ');
 
@@ -437,6 +479,7 @@ function streamItem(x) {
     t.device + ': ' + deviceName(x),
     t.state + ': ' + stateText(x.state),
     t.time + ': ' + fmtClock(x.view_offset) + ' / ' + fmtClock(x.duration) + ' (' + progress + ' %)',
+    rest !== null ? t.remaining + ': ' + fmtDur(rest) + (playing ? ' (' + fill(t.endsAt, { time: clockIn(rest) }) + ')' : '') : '',
     quality ? t.quality + ': ' + quality : '',
     x.bandwidth ? t.bandwidth + ': ' + fmtMbit(x.bandwidth) : '',
     x.location ? t.network + ': ' + String(x.location).toUpperCase() : ''
@@ -468,6 +511,7 @@ function loadHome() {
 
     var connected = !status.err && status.data && status.data.connected === true;
     var sessions = ((act.data && act.data.sessions) || []).slice();
+    trackSessions(sessions);
     sessions.sort(function (a, b) {
       return (a.state === 'paused' ? 1 : 0) - (b.state === 'paused' ? 1 : 0);
     });
@@ -522,6 +566,117 @@ function loadHistory(listId, userId) {
     if (!items.length) items.push(emptyItem(t.noHistory));
     sendList(listId, { header: header }, items);
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Person: Wiedergabezeit, Diagramm, Verlauf                           */
+/* ------------------------------------------------------------------ */
+
+// Schlüssel für Nutzer: "user_id|Name" (der Name dient als Überschrift)
+function userKey(id, name) { return String(id) + '|' + String(name || '').replace(/\|/g, '/'); }
+function splitKey(key) {
+  var p = String(key || '').split('|');
+  return { id: p[0] || '', name: p.slice(1).join('|') };
+}
+
+function loadUser(key) {
+  var u = splitKey(key);
+  var t = L();
+  if (!u.id) return sendError(LIST_USER_HISTORY, t.error);
+  parallel([
+    ['get_user_watch_time_stats', { user_id: u.id, query_days: '1,7,30' }],
+    ['get_history', { user_id: u.id, length: settings().CfgCount, order_column: 'date', order_dir: 'desc' }]
+  ], function (r) {
+    var t = L();
+    if (r[0].err && r[1].err) return sendError(LIST_USER_HISTORY, r[1].err);
+    var items = [];
+    var stats = r[0].data || [];
+    var labels = { 1: t.statToday, 7: t.stat7, 30: t.stat30 };
+    [1, 7, 30].forEach(function (days) {
+      var row = null;
+      for (var i = 0; i < stats.length; i++) if (parseInt(stats[i].query_days, 10) === days) row = stats[i];
+      items.push({
+        section: 0, kind: KIND_NONE, title: labels[days], progress: -1,
+        subtitle: row ? fmtDur(row.total_time) + ' · ' + (parseInt(row.total_plays, 10) || 0) + 'x' : t.noData
+      });
+    });
+    items.push({ section: 0, kind: KIND_CHART, title: t.userChart, subtitle: t.userChartSub, key: key, progress: -1 });
+    var rows = (r[1].data && r[1].data.data) || [];
+    rows.forEach(function (x) { var it = historyItem(x, false); it.section = 1; items.push(it); });
+    if (!rows.length) items.push({ section: 1, kind: KIND_NONE, title: t.noHistory, progress: -1 });
+    var name = u.name || (rows[0] && (rows[0].friendly_name || rows[0].user)) || '';
+    sendList(LIST_USER_HISTORY, { sections: [t.userWatchTime, t.history], header: name }, items);
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Vibration, wenn eine Wiedergabe zu Ende geschaut ist                */
+/* ------------------------------------------------------------------ */
+// Läuft nur, solange die App auf der Uhr offen ist (dann läuft auch dieser
+// JS-Teil auf dem Handy). Alle 30 Sekunden werden die laufenden Streams
+// verglichen: Ist ein Stream verschwunden oder läuft darin schon das nächste
+// Medium (Autoplay) und war er hochgerechnet bei mindestens 90 %, gilt er als
+// zu Ende geschaut.
+
+var known = null;          // session_id -> { key, title, user, offset, duration, playing, seen }
+var lastActivityAt = 0;
+var watchTimer = null;
+
+function sessionTitle(x) {
+  var code = x.media_type === 'episode' ? epCode(x.parent_media_index, x.media_index) : '';
+  return mainTitle(x) + (code ? ' ' + code : '');
+}
+
+function wasFinished(k, now) {
+  if (!(k.duration > 0)) return false;
+  var offset = k.offset + (k.playing ? now - k.seen : 0);
+  return offset / k.duration * 100 >= WATCHED_PERCENT;
+}
+
+function trackSessions(sessions) {
+  var now = Date.now();
+  lastActivityAt = now;
+  var next = {};
+  sessions.forEach(function (x) {
+    if (!x.session_id) return;
+    next[x.session_id] = {
+      key: String(x.rating_key || x.full_title || ''),
+      title: sessionTitle(x),
+      user: x.friendly_name || x.user || '',
+      offset: parseInt(x.view_offset, 10) || 0,
+      duration: parseInt(x.duration, 10) || 0,
+      playing: x.state !== 'paused',
+      seen: now
+    };
+  });
+  if (known && settings().CfgVibrate) {
+    for (var id in known) {
+      var k = known[id];
+      var n = next[id];
+      var ended = !n || n.key !== k.key;   // weg oder nächstes Medium (Autoplay)
+      if (ended && wasFinished(k, now)) {
+        send({ Type: T_NOTIFY, Lang: langCode(), Text: clip(fill(L().finished, { user: k.user, title: k.title }), 96) });
+      }
+    }
+  }
+  known = next;
+}
+
+function checkActivity() {
+  var s = settings();
+  if (!s.CfgVibrate) return;
+  if (!isDemo() && (!s.CfgUrl || !s.CfgApiKey)) return;
+  // Wenn der Startbildschirm gerade erst geladen hat, ist nichts zu tun
+  if (Date.now() - lastActivityAt < WATCH_INTERVAL_MS - 5000) return;
+  api('get_activity', {}, function (err, data) {
+    if (err) return;
+    trackSessions((data && data.sessions) || []);
+  });
+}
+
+function startWatcher() {
+  if (watchTimer) clearInterval(watchTimer);
+  watchTimer = setInterval(checkActivity, WATCH_INTERVAL_MS);
 }
 
 /* ------------------------------------------------------------------ */
@@ -600,7 +755,7 @@ function loadUsers() {
         kind: plays > 0 ? KIND_USER : KIND_NONE,
         title: u.friendly_name || u.username || '?',
         subtitle: sub,
-        key: String(u.user_id || ''),
+        key: userKey(u.user_id || '', u.friendly_name || u.username || ''),
         progress: -1
       };
     });
@@ -743,9 +898,14 @@ function chartLabel(dateStr, days) {
   return d.getDate() + '.' + (d.getMonth() + 1) + '.';
 }
 
-function loadChart(daysParam) {
-  var days = parseInt(daysParam, 10) === 30 ? 30 : 7;
-  api('get_plays_by_date', { time_range: days, y_axis: 'plays' }, function (err, data) {
+// key: "7" oder "30", für eine Person "7|user_id|Name"
+function loadChart(key) {
+  var parts = String(key || '').split('|');
+  var days = parseInt(parts[0], 10) === 30 ? 30 : 7;
+  var user = splitKey(parts.slice(1).join('|'));
+  var params = { time_range: days, y_axis: 'plays' };
+  if (user.id) params.user_id = user.id;
+  api('get_plays_by_date', params, function (err, data) {
     var t = L();
     if (err) return sendError(LIST_CHART, err);
     var cats = (data && data.categories) || [];
@@ -775,7 +935,7 @@ function loadChart(daysParam) {
       Data: bytes,
       Labels: labels.join('|'),
       Sections: t.chartLegend,
-      Header: clip(fill(t.chartHeader, { days: days, plays: fmtNum(total) }), 48)
+      Header: clip(fill(user.name ? t.chartHeaderUser : t.chartHeader, { user: user.name, days: days, plays: fmtNum(total) }), 48)
     });
   });
 }
@@ -808,13 +968,14 @@ function load(listId, key) {
     case LIST_STATS: return loadStats();
     case LIST_USERS: return loadUsers();
     case LIST_LIBRARIES: return loadLibraries();
-    case LIST_USER_HISTORY: return loadHistory(LIST_USER_HISTORY, key);
+    case LIST_USER_HISTORY: return loadUser(key);
     case LIST_CHART: return loadChart(key);
   }
 }
 
 Pebble.addEventListener('ready', function () {
   loadHome();
+  startWatcher();
 });
 
 Pebble.addEventListener('appmessage', function (e) {

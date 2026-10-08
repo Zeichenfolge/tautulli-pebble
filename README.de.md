@@ -17,13 +17,19 @@ kostenlos und Open Source bleibt sie so oder so.
 
 - **Jetzt läuft** – aktuelle Streams mit Nutzer, Folge/Jahr und Fortschrittsbalken.
   Oben steht, ob Plex erreichbar ist, wie viele Streams laufen und die Gesamtbandbreite.
-  Aktualisiert sich alle 30 Sekunden, solange die App offen ist.
+  Aktualisiert sich alle 30 Sekunden, solange die App offen ist. Fortschritt wahlweise in Prozent,
+  als Restzeit („noch 14 Min“) oder als Uhrzeit des Endes („bis 21:45“).
 - **Stream-Details** – Gerät, Zeit, Qualität (Direct Play / Transcode), Bandbreite, LAN/WAN.
 - **Stream beenden** – roter Stopp-Knopf neben SELECT, mit Rückfrage.
   Der Zuschauer sieht „Der Stream wurde beendet.“ (braucht Plex Pass).
 - **Verlauf** – zuletzt Geschautes mit Nutzer, Zeitpunkt und Fortschritt.
 - **Neu hinzugefügt** – neue Filme, Folgen, Staffeln und Alben.
-- **Nutzer** – wer zuletzt geschaut hat und wie viel; mit SELECT der Verlauf dieser Person.
+- **Nutzer** – wer zuletzt geschaut hat und wie viel. Mit SELECT die Ansicht dieser Person:
+  Wiedergabezeit (heute / 7 / 30 Tage), eigenes Diagramm „Wiedergaben pro Tag“ und Verlauf.
+- **Zu Ende geschaut** – die Uhr vibriert und zeigt „Emma hat Harbor Patrol S02E05 zu Ende geschaut“,
+  wenn ein Stream mit mindestens 90 % endet (auch wenn per Autoplay die nächste Folge startet).
+  Funktioniert, solange die App offen ist; für Benachrichtigungen bei geschlossener App siehe
+  [Benachrichtigungen bei geschlossener App](#benachrichtigungen-bei-geschlossener-app-ntfy).
 - **Statistik** – Wiedergabezeit heute / 7 / 30 Tage, Top-Nutzer, Top-Filme und -Serien.
 - **Diagramm** – Wiedergaben pro Tag als gestapelte Balken (Serien, Filme, Musik), 7 oder 30 Tage.
 - **Bibliotheken** – Anzahl Filme, Serien/Folgen, Künstler/Alben je Bibliothek.
@@ -38,11 +44,29 @@ kostenlos und Open Source bleibt sie so oder so.
 3. In der Pebble-App auf dem Handy **Tautulli → Einstellungen** öffnen und eintragen:
    - **Tautulli-Adresse**, z. B. `http://192.168.1.10:8181`
    - **API-Key**
-   - optional **Sprache** und wie viele Einträge die Listen zeigen
+   - optional **Sprache**, wie der **Fortschritt** angezeigt wird (Prozent, Restzeit, Ende um),
+     ob die Uhr **vibrieren** soll, wenn etwas zu Ende geschaut ist,
+     und wie viele Einträge die Listen zeigen
 
 Die Uhr spricht nie direkt mit deinem Server, das macht das Handy. Mit einer lokalen
 Adresse funktioniert die App deshalb nur, solange das Handy im Heim-WLAN ist.
 Für unterwegs brauchst du eine von außen erreichbare Adresse (z. B. einen Reverse Proxy mit HTTPS).
+
+## Benachrichtigungen bei geschlossener App (ntfy)
+
+Eine Pebble-App läuft nur, solange sie auf der Uhr offen ist. Wenn die Uhr auch bei
+geschlossener App vibrieren soll, wenn etwas zu Ende geschaut wurde, lässt du Tautulli
+die Nachricht schicken – die Pebble zeigt ohnehin jede Benachrichtigung vom Handy an:
+
+1. Auf dem Handy die App **ntfy** installieren und ein Thema mit schwer zu erratendem Namen
+   abonnieren, z. B. `plex-michael-7f3k`. In der Pebble-App Benachrichtigungen von ntfy erlauben.
+2. In Tautulli: *Settings → Notification Agents → Add a new notification agent → ntfy*.
+   - **Configuration:** ntfy Host Address `https://ntfy.sh` (oder dein eigener ntfy-Server), ntfy Topic wie oben.
+   - **Triggers:** **Watched** anhaken (optional auch *Playback Start* oder *Playback Stop*).
+   - **Text:** z. B. Betreff `Plex`, Text `{user} hat {title} gesehen`.
+3. Mit *Test Notifications* unten im Agenten ausprobieren.
+
+Ab wann ein Stream als „gesehen“ zählt, stellst du in *Settings → General → Watched Percent* ein.
 
 ## Tasten
 

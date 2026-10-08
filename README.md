@@ -17,13 +17,19 @@ it stays free and open source either way.
 
 - **Now playing** – current streams with user, episode/year and a progress bar.
   The header shows whether Plex is reachable, the number of streams and the total bandwidth.
-  Refreshes every 30 seconds while open.
+  Refreshes every 30 seconds while open. Progress as percent, time left (“14 min left”)
+  or end time (“ends 21:45”) – your choice in the settings.
 - **Stream details** – device, time, quality (Direct Play / Transcode), bandwidth, LAN/WAN.
 - **Stop a stream** – red stop button next to SELECT, with a confirmation.
   The viewer sees “The stream has been stopped.” (requires Plex Pass).
 - **History** – recently watched, with user, time and progress.
 - **Recently added** – new movies, episodes, seasons and albums.
-- **Users** – who watched last and how much; open a user to see their own history.
+- **Users** – who watched last and how much. Open a person to see their watch time
+  (today / 7 / 30 days), their own plays-per-day chart and their history.
+- **Watched to the end** – the watch vibrates and shows “Emma finished Harbor Patrol S02E05”
+  when a stream ends after at least 90 % (also when autoplay starts the next episode).
+  Works while the app is open; for notifications with the app closed see
+  [Notifications with the app closed](#notifications-with-the-app-closed-ntfy).
 - **Statistics** – watch time today / 7 / 30 days, top users, top movies and shows.
 - **Chart** – plays per day as stacked bars (shows, movies, music), 7 or 30 days.
 - **Libraries** – number of movies, shows/episodes, artists/albums per library.
@@ -38,11 +44,29 @@ it stays free and open source either way.
 3. In the Pebble app on your phone, open **Tautulli → Settings** and enter:
    - **Tautulli address**, e.g. `http://192.168.1.10:8181`
    - **API key**
-   - optionally the **language** and how many entries the lists show
+   - optionally the **language**, how **progress** is shown (percent, time left, end time),
+     whether the watch should **vibrate** when something was watched to the end,
+     and how many entries the lists show
 
 The watch never talks to your server directly – your phone does. With a local
 address the app therefore only works while your phone is on your home Wi-Fi.
 For use on the go you need an address that is reachable from outside (e.g. a reverse proxy with HTTPS).
+
+## Notifications with the app closed (ntfy)
+
+A Pebble app only runs while it is open on the watch. If you want a buzz when
+something was watched to the end even with the app closed, let Tautulli send it –
+your Pebble shows every phone notification anyway:
+
+1. Install the **ntfy** app on your phone and subscribe to a topic with a hard-to-guess name,
+   e.g. `plex-michael-7f3k`. In the Pebble app, allow notifications from ntfy.
+2. In Tautulli: *Settings → Notification Agents → Add a new notification agent → ntfy*.
+   - **Configuration:** ntfy Host Address `https://ntfy.sh` (or your own ntfy server), ntfy Topic as above.
+   - **Triggers:** tick **Watched** (optionally also *Playback Start* or *Playback Stop*).
+   - **Text:** e.g. subject `Plex`, body `{user} watched {title}`.
+3. Test it with *Test Notifications* at the bottom of the agent.
+
+When a stream counts as “watched” is set in *Settings → General → Watched Percent*.
 
 ## Buttons
 
@@ -61,7 +85,7 @@ PebbleKit JS on the phone calls the Tautulli API v2, prepares all texts in the s
 language and sends them to the watch via AppMessage. The watch only draws lists, details and the chart.
 
 Tautulli commands used: `server_status`, `get_activity`, `get_history`, `get_recently_added`,
-`get_home_stats`, `get_users_table`, `get_libraries_table`, `get_plays_by_date`,
+`get_home_stats`, `get_users_table`, `get_user_watch_time_stats`, `get_libraries_table`, `get_plays_by_date`,
 `terminate_session` (POST).
 
 ## Building

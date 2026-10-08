@@ -17,8 +17,9 @@
  *   4 Error      ListId, Text, Lang, [Header, HeaderState]
  *   5 Result     Ok, Text   (Antwort auf "Stream beenden")
  *   6 Chart      Total, Data, Labels, Sections, Header, Lang
+ *   7 Notify     Text  (z. B. „Emma hat … zu Ende geschaut“: Uhr vibriert)
  * Uhr -> Handy (Schlüssel "Command"):
- *   1 Laden      ListId, [Key]  (Key = user_id bzw. Anzahl Tage)
+ *   1 Laden      ListId, [Key]  (Key = "user_id|Name" bzw. "Tage[|user_id|Name]")
  *   2 Beenden    Key (session_id)
  */
 #include <pebble.h>
@@ -40,11 +41,13 @@
 #define T_ERROR      4
 #define T_RESULT     5
 #define T_CHART      6
+#define T_NOTIFY     7
 
 #define KIND_NONE   0   // nicht auswählbar
 #define KIND_DETAIL 1   // öffnet Detailansicht
 #define KIND_STREAM 2   // Detailansicht mit „Stream beenden“
-#define KIND_USER   3   // öffnet den Verlauf dieses Nutzers
+#define KIND_USER   3   // öffnet die Ansicht dieser Person
+#define KIND_CHART  4   // öffnet das Diagramm (Key = Person)
 
 #define CMD_LOAD      1
 #define CMD_TERMINATE 2
@@ -64,14 +67,14 @@ typedef struct {
   int8_t progress;          // 0..100, -1 = kein Fortschrittsbalken
   char title[40];
   char subtitle[56];
-  char key[40];             // session_id bei Streams, user_id bei Nutzern
+  char key[40];             // session_id bei Streams, "user_id|Name" bei Nutzern
   char *detail;             // Text der Detailansicht (malloc)
   char *confirm;            // Rückfrage beim Beenden (malloc, nur Streams)
 } Item;
 
 typedef struct {
   uint8_t list_id;
-  char param[24];           // z. B. user_id beim Verlauf eines Nutzers
+  char param[40];           // z. B. "user_id|Name" bei der Ansicht einer Person
   char title[40];           // Kopfzeile, bis Daten da sind
   Window *window;
   Layer *header_layer;
@@ -249,9 +252,10 @@ static void prv_send_load(ListView *v) {
   prv_reload(v);
 }
 
-static void prv_chart_request(int days) {
-  char buf[8];
-  snprintf(buf, sizeof(buf), "%d", days);
+static void prv_chart_request(int days, const char *key) {
+  char buf[64];
+  if (key && key[0]) snprintf(buf, sizeof(buf), "%d|%s", days, key);
+  else snprintf(buf, sizeof(buf), "%d", days);
   if (!prv_send_command(CMD_LOAD, LIST_CHART, buf)) chart_handle_error(tr(STR_NO_PHONE));
 }
 
@@ -264,17 +268,30 @@ static void prv_toast_timer(void *ctx) {
   if (s_toast_window) window_stack_remove(s_toast_window, true);
 }
 
+// Text setzen und senkrecht mittig ausrichten
+static void prv_toast_layout(void) {
+  if (!s_toast_window || !s_toast_layer) return;
+  GRect b = layer_get_bounds(window_get_root_layer(s_toast_window));
+  layer_set_frame(text_layer_get_layer(s_toast_layer), GRect(8, 0, b.size.w - 16, b.size.h));
+  text_layer_set_text(s_toast_layer, s_toast_text);
+  GSize sz = text_layer_get_content_size(s_toast_layer);
+  int16_t h = sz.h + 8 < b.size.h ? sz.h + 8 : b.size.h;
+  layer_set_frame(text_layer_get_layer(s_toast_layer), GRect(8, (b.size.h - h) / 2, b.size.w - 16, h));
+}
+
 static void prv_toast_load(Window *w) {
   Layer *root = window_get_root_layer(w);
   GRect b = layer_get_bounds(root);
   window_set_background_color(w, COLOR_ACCENT);
-  s_toast_layer = text_layer_create(GRect(10, b.size.h / 2 - 40, b.size.w - 20, 80));
+  // Text über die ganze Höhe umbrechen und senkrecht mittig setzen
+  s_toast_layer = text_layer_create(GRect(8, 0, b.size.w - 16, b.size.h));
   text_layer_set_background_color(s_toast_layer, GColorClear);
   text_layer_set_text_color(s_toast_layer, GColorBlack);
   text_layer_set_font(s_toast_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_text_alignment(s_toast_layer, GTextAlignmentCenter);
-  text_layer_set_text(s_toast_layer, s_toast_text);
+  text_layer_set_overflow_mode(s_toast_layer, GTextOverflowModeWordWrap);
   layer_add_child(root, text_layer_get_layer(s_toast_layer));
+  prv_toast_layout();
 }
 
 static void prv_toast_unload(Window *w) {
@@ -285,7 +302,7 @@ static void prv_toast_unload(Window *w) {
   s_toast_window = NULL;
 }
 
-static void prv_toast_show(const char *text, bool auto_close) {
+static void prv_toast_show_ms(const char *text, uint32_t ms) {
   prv_copy(s_toast_text, sizeof(s_toast_text), text);
   if (!s_toast_window) {
     s_toast_window = window_create();
@@ -293,12 +310,16 @@ static void prv_toast_show(const char *text, bool auto_close) {
       .load = prv_toast_load, .unload = prv_toast_unload,
     });
     window_stack_push(s_toast_window, true);
-  } else if (s_toast_layer) {
-    text_layer_set_text(s_toast_layer, s_toast_text);
+  } else {
+    prv_toast_layout();
   }
   if (s_toast_timer) { app_timer_cancel(s_toast_timer); s_toast_timer = NULL; }
+  s_toast_timer = app_timer_register(ms, prv_toast_timer, NULL);
+}
+
+static void prv_toast_show(const char *text, bool auto_close) {
   // Ohne Antwort schließt sich die Meldung spätestens nach 15 Sekunden
-  s_toast_timer = app_timer_register(auto_close ? 2000 : 15000, prv_toast_timer, NULL);
+  prv_toast_show_ms(text, auto_close ? 2000 : 15000);
 }
 
 /* ------------------------------------------------------------------ */
@@ -602,7 +623,7 @@ static void prv_select(MenuLayer *m, MenuIndex *idx, void *ctx) {
   ListView *v = ctx;
   if (prv_is_more_section(v, idx->section)) {
     uint8_t id = s_more[idx->row].list_id;
-    if (id == LIST_CHART) chart_open(prv_chart_request);
+    if (id == LIST_CHART) chart_open(prv_chart_request, NULL);
     else prv_list_open(id, NULL, tr(s_more[idx->row].title));
     return;
   }
@@ -619,6 +640,9 @@ static void prv_select(MenuLayer *m, MenuIndex *idx, void *ctx) {
       break;
     case KIND_USER:
       prv_list_open(LIST_USER_HISTORY, it->key, it->title);
+      break;
+    case KIND_CHART:
+      chart_open(prv_chart_request, it->key);
       break;
   }
 }
@@ -779,7 +803,7 @@ static void prv_handle_item(ListView *v, DictionaryIterator *it) {
   // Ohne Detailtext gibt es nichts zu öffnen
   if ((item->kind == KIND_DETAIL || item->kind == KIND_STREAM) && !item->detail) item->kind = KIND_NONE;
   if (item->kind == KIND_STREAM && !item->key[0]) item->kind = KIND_DETAIL;
-  if (item->kind == KIND_USER && !item->key[0]) item->kind = KIND_NONE;
+  if ((item->kind == KIND_USER || item->kind == KIND_CHART) && !item->key[0]) item->kind = KIND_NONE;
 }
 
 static void prv_handle_end(ListView *v) {
@@ -842,6 +866,15 @@ static void prv_handle_result(DictionaryIterator *it) {
   if (success && s_home) prv_send_load(s_home);
 }
 
+// Eine Wiedergabe ist zu Ende geschaut: zweimal lang vibrieren und kurz anzeigen
+static void prv_handle_notify(DictionaryIterator *it) {
+  const char *text = prv_tuple_str(dict_find(it, MESSAGE_KEY_Text));
+  if (!text) return;
+  static const uint32_t segments[] = { 300, 150, 300 };
+  vibes_enqueue_custom_pattern((VibePattern) { .durations = segments, .num_segments = ARRAY_LENGTH(segments) });
+  prv_toast_show_ms(text, 5000);
+}
+
 static void prv_inbox(DictionaryIterator *it, void *ctx) {
   Tuple *t = dict_find(it, MESSAGE_KEY_Type);
   if (!t) return;
@@ -849,6 +882,7 @@ static void prv_inbox(DictionaryIterator *it, void *ctx) {
   prv_apply_lang(it);
   if (type == T_RESULT) { prv_handle_result(it); return; }
   if (type == T_CHART) { chart_handle_data(it); return; }
+  if (type == T_NOTIFY) { prv_handle_notify(it); return; }
 
   Tuple *lt = dict_find(it, MESSAGE_KEY_ListId);
   int list_id = lt ? lt->value->int32 : 0;

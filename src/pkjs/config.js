@@ -19,6 +19,12 @@ var TEXT = {
     display: 'Anzeige',
     language: 'Sprache',
     langAuto: 'Wie die Uhr',
+    progress: 'Fortschritt laufender Streams',
+    progressPercent: 'Prozent',
+    progressRemaining: 'Restzeit',
+    progressEnd: 'Ende um',
+    vibrate: 'Vibrieren, wenn etwas zu Ende geschaut ist',
+    vibrateHint: 'Nur solange die App auf der Uhr offen ist. Für Benachrichtigungen auch bei geschlossener App siehe die Anleitung auf GitHub (ntfy).',
     count: 'Einträge in „Verlauf“ und „Neu hinzugefügt“',
     save: 'Speichern',
     support: 'Unterstützen',
@@ -38,6 +44,12 @@ var TEXT = {
     display: 'Display',
     language: 'Language',
     langAuto: 'Same as watch',
+    progress: 'Progress of streams',
+    progressPercent: 'Percent',
+    progressRemaining: 'Time left',
+    progressEnd: 'End time',
+    vibrate: 'Vibrate when something was watched to the end',
+    vibrateHint: 'Only while the app is open on the watch. For notifications with the app closed, see the guide on GitHub (ntfy).',
     count: 'Entries in “History” and “Recently added”',
     save: 'Save',
     support: 'Support',
@@ -108,6 +120,24 @@ module.exports = function (lang) {
             { label: 'Deutsch', value: 'de' },
             { label: 'English', value: 'en' }
           ]
+        },
+        {
+          type: 'select',
+          messageKey: 'CfgProgress',
+          label: t.progress,
+          defaultValue: 'percent',
+          options: [
+            { label: t.progressPercent, value: 'percent' },
+            { label: t.progressRemaining, value: 'remaining' },
+            { label: t.progressEnd, value: 'endtime' }
+          ]
+        },
+        {
+          type: 'toggle',
+          messageKey: 'CfgVibrate',
+          label: t.vibrate,
+          description: t.vibrateHint,
+          defaultValue: true
         },
         {
           type: 'slider',

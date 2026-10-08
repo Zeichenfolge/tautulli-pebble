@@ -187,8 +187,20 @@ function librariesTable(lang) {
   ] };
 }
 
+// Anteil einer Person an allen Wiedergaben (für Diagramm und Wiedergabezeit pro Person)
+var USER_SHARE = { 101: 0.45, 102: 0.3, 103: 0.17, 104: 0.08 };
+
+function userWatchTime(params) {
+  var share = USER_SHARE[params.user_id] || 0;
+  var all = { 1: [6, 6540], 7: [34, 47500], 30: [125, 176100] };
+  return [1, 7, 30].map(function (d) {
+    return { query_days: d, total_plays: Math.round(all[d][0] * share), total_time: Math.round(all[d][1] * share) };
+  });
+}
+
 function playsByDate(params) {
   var days = parseInt(params.time_range, 10) || 30;
+  var share = params.user_id ? (USER_SHARE[params.user_id] || 0) : 1;
   var cats = [], tv = [], movies = [], music = [], live = [];
   var today = new Date();
   for (var i = days - 1; i >= 0; i--) {
@@ -198,9 +210,9 @@ function playsByDate(params) {
     var wd = d.getDay();
     var weekend = wd === 0 || wd === 6;
     var seed = (d.getDate() * 7 + d.getMonth() * 3) % 5;
-    tv.push((weekend ? 6 : 3) + seed);
-    movies.push(weekend ? 2 + (seed % 2) : (seed % 3 === 0 ? 1 : 0));
-    music.push(seed % 2);
+    tv.push(Math.round(((weekend ? 6 : 3) + seed) * share));
+    movies.push(Math.round((weekend ? 2 + (seed % 2) : (seed % 3 === 0 ? 1 : 0)) * share * 1.5));
+    music.push(share < 1 ? 0 : seed % 2);
     live.push(0);
   }
   return { categories: cats, series: [
@@ -223,6 +235,7 @@ exports.request = function (cmd, params, lang) {
     case 'get_recently_added': return { data: recentlyAdded(params, lang) };
     case 'get_home_stats': return { data: homeStats(params) };
     case 'get_users_table': return { data: usersTable() };
+    case 'get_user_watch_time_stats': return { data: userWatchTime(params) };
     case 'get_libraries_table': return { data: librariesTable(lang) };
     case 'get_plays_by_date': return { data: playsByDate(params) };
     case 'terminate_session': return terminate(params);
